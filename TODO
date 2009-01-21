@@ -1,0 +1,27 @@
+#########################
+#        TODO           #
+#                       #
+# (no particular order) #
+#########################
+
+* Get feedback on v0.01 from cpan-testers-discuss
+
+* use accessor/mutator methods for the package vars
+
+##############
+COVERAGE STATS
+##############
+
+*** v0.01 ***
+---------------------------- ------ ------ ------ ------ ------ ------ ------
+File                           stmt   bran   cond    sub    pod   time  total
+---------------------------- ------ ------ ------ ------ ------ ------ ------
+.../Reporter/Smoker/Safer.pm   83.6   90.9   71.4   76.9  100.0  100.0   84.2	# 101/120
+---------------------------- ------ ------ ------ ------ ------ ------ ------
+
+export HARNESS_PERL_SWITCHES=-MDevel::Cover=+ignore,Errno.pm
+cover -delete
+make test
+cover
+chmod go+rx cover_db
+
