@@ -4,13 +4,14 @@ use strict;
 use warnings;
 use base qw(CPAN::Reporter::Smoker);
 use CPAN;
-use POSIX qw/mktime/;
+use LWP::Simple();
+use URI();
 
 use Exporter;
 our @ISA = 'Exporter';
 our @EXPORT = qw/ start /;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 our $MIN_REPORTS  = 10;
 our $MIN_DAYS_OLD = 14;
@@ -19,15 +20,15 @@ our @RE_EXCLUSIONS = (
   qr#/mod_perl-\d#,
 );
 
-our $OUTPUT = '';
-
 
 sub start {              # Overload of CPAN::Reporter::Smoker::start()
   my $self = __PACKAGE__;
   my $args = { @_ };
-  my $mask      = delete($args->{safer__mask});
-  my $filter    = delete($args->{safer__filter});
-  my $dists = $self->__installed_dists( $mask, $filter );
+  my $saferOpts = delete( $args->{safer} ) || {};
+  $MIN_REPORTS   =   $saferOpts->{min_reports}  if exists $saferOpts->{min_reports};
+  $MIN_DAYS_OLD  =   $saferOpts->{min_days_old} if exists $saferOpts->{min_days_old};
+  @RE_EXCLUSIONS = @{$saferOpts->{exclusions}}  if exists $saferOpts->{exclusions};
+  my $dists = $self->__installed_dists( @$saferOpts{qw/mask filter/} );
 
   printf "Smoker::Safer: Found %d suitable distributions.\n", scalar @$dists;
   return CPAN::Reporter::Smoker::start( %$args, list => $dists );
@@ -41,26 +42,28 @@ sub __filter {
     return 0 if $d =~ m/$re/;
   }
 
+  my $uri = URI->new('http://www.cpantesters.org/cgi-bin/reports-text.cgi');
+  my %params = (
+	distvers => $dist->base_id,
+	agent => ref($self)||$self,
+  );
+
   if( $MIN_DAYS_OLD ){
-    if( my $upload_date = $dist->upload_date ){
-      my @d = split /-/, $upload_date, 3;  # YYYY-MM-DD
-      my $t = POSIX::mktime( 0, 0, 0, $d[2], $d[1]-1, $d[0]-1900 );
+    $uri->query_form( %params, act => 'uploaded', epoch => 1 );
+    if( my $t = LWP::Simple::get($uri) ){
       return 0 if time - $t < $MIN_DAYS_OLD*24*60*60;
     }else{
       printf "Smoker::Safer: WARNING -- no upload_date for '%s'\n", $d;
+      return 0;
     }
   }
 
   if( $MIN_REPORTS ){
-    my $n = eval {   # eval this, so that ->reports die'ing doesn't kill everything.
-	# HACK -- it fudges it so that CPAN::Distribution writes to our $OUTPUT package var. Then parse that to get the actual reports lines.
-      local $OUTPUT = '';
-      local $CPAN::Frontend = $self;
-      my $reports = $dist->reports;
-      scalar grep { /^[ *]/ } split /\n/, $reports;
-    };
-    if( $@ || !defined $n ){
-      printf "Smoker::Safer: WARNING -- couldn't retrieve reports for '%s': %s\n", $d, $@;
+    $uri->query_form( %params, act => 'reports' );
+    my ($n) = LWP::Simple::get($uri) =~ /ALL\((\d+)\)/;
+    if( !defined $n ){
+      printf "Smoker::Safer: WARNING -- couldn't retrieve reports for '%s'\n", $d;
+      return 0;
     }elsif( $n < $MIN_REPORTS ){
       return 0;
     }
@@ -93,26 +96,6 @@ sub __installed_dists {
   return \@dists;
 }
 
-########################
-# These my*() subs are a hack so that we can get the output from CPAN::Distribution->reports.
-sub myprint {
-  my($self,$what) = @_;
-  $OUTPUT .= $what;
-}
-sub myexit {
-  my($self,$what) = @_;
-  $self->myprint($what);
-  exit;
-}
-sub mywarn {
-  my($self,$what) = @_;
-  warn $what;
-}
-sub mydie {
-  my($self,$what) = @_;
-  die $what;
-}
-########################
 
 1;# End of CPAN::Reporter::Smoker::Safer
 
@@ -126,12 +109,22 @@ CPAN::Reporter::Smoker::Safer - Turnkey smoking of installed distros
 
 =head1 VERSION
 
-Version 0.01
+Version 0.02
 
 
 =head1 SYNOPSIS
 
+  # Default usage
   perl -MCPAN::Reporter::Smoker::Safer -e start
+
+  # Control the 'trust' params for the default filter
+  perl -MCPAN::Reporter::Smoker::Safer -e 'start( safer=>{min_reports=>0, min_days_old=>2} )'
+
+  # Smoke all installed modules from a specific namespace
+  perl -MCPAN::Reporter::Smoker::Safer -e 'start( safer=>{min_reports=>0, min_days_old=>0, mask=>"/MyFoo::/"} )'
+
+  # Custom filter (in this case, specific authorid)
+  perl -MCPAN::Reporter::Smoker::Safer -e 'start( safer=>{filter=>sub{$_[1] =~ m#/DAVIDRW/#}} )'
 
 
 =head1 DESCRIPTION
@@ -153,60 +146,67 @@ take these risks.
 
 =head2 start()
 
-This is an overload of L<CPAN::Reporter::Smoker>::start, and supports the same arguments, with the exception of C<list> which is set internally.  In addition, the following arguments are support:
+This is an overload of L<CPAN::Reporter::Smoker>::start, and supports the same arguments, with the exception of C<list> which is set internally.  In addition, supports the following argument:
 
-=head3 safer__mask
+=head3 safer
+
+Hashref with the following possible keys:
+
+=over 2
+
+=item mask
 
 Scalar; Defaults to C<'/./'>; Value is passed to C<CPAN::Shell::expand()> for filtering the module list (applies to I<module> names, not distro names).
 
-=head3 safer__filter
+=item filter
 
-Code ref; Defaults to L<"__filter">. First argument is the CPAN::Reporter::Smoker::Safer class/object; Second argument is a L<CPAN::Distribution> object.  Return value should be C<1> to accept, and C<0> to reject the distribution.
+Code ref; Defaults to L<"__filter">. First argument is the CPAN::Reporter::Smoker::Safer class/object; Second argument is a L<CPAN::Distribution> object.  Return value should be C<1> (true) to accept, and C<0> (false) to reject the distribution.
 
-	safer__filter => sub {
+	filter => sub {
 	  my ($safer, $dist) = @_;
 	  ...
           return 1; 
 	},
 
+=item min_reports
+
+Defaults to 10. This is used by the default filter -- distros are 'trusted' if they have at least this many CPAN testers reports already.
+
+=item min_days_old
+
+Defaults to 10. This is used by the default filter -- distros are 'trusted' unless they were uploaded to CPAN at least this many days ago.
+
+=item exclusions
+
+Defaults to C<[ qr#/perl-5\.#, qr#/mod_perl-\d# ]>.  This is used by the default filter to exclude
+any distro whose name (e.g. A/AU/AUTHOR/Foo-Bar-1.23.tar.gz) matches one of these regexes.
+
+Note that the F<disabled.yml> functionality might be more suitable.  See L<CPAN::Reporter::Smoker>, L<CPAN>, and L<CPAN::Distroprefs> for more details.
+
+=back
 
 =head1 INTERNAL METHODS
 
 =head2 __filter
 
-Used as the default L<"safer__filter"> code ref.
+Used as the default L<"filter"> code ref.
 
 =over 2
 
 =item *
 
-Excludes any distro who's name (e.g. A/AU/AUTHOR/Foo-Bar-1.23.tar.gz) matches one of the regexes in C<@RE_EXCLUSIONS>.
+Excludes any distro who's name (e.g. A/AU/AUTHOR/Foo-Bar-1.23.tar.gz) matches a list of L<"exclusions">.
 
 =item *
 
-Exclude any distro that was uploaded to CPAN less than C<MIN_DAYS_OLD> days ago.
+Exclude any distro that was uploaded to CPAN less than L<"min_days_old"> days ago.
 
 =item *
 
-Exclude any distro that has less than C<MIN_REPORTS> CPAN Testers reports.
+Exclude any distro that has less than L<"min_reports"> CPAN Testers reports.
 
 =back
 
-These rely on the following package variables:
-
-=head3 MIN_REPORTS
-
-Scalar; Defaults to 10
-
-=head3 MIN_DAYS_OLD
-
-Scalar; Defaults to 14
-
-=head3 RE_EXCLUSIONS
-
-Array of regexes.  Defaults to C<( qr#/perl-5\.#, qr#/mod_perl-\d# )>.  Any I<distribution> names that match any of the items will be excluded.
-
-Note that the F<disabled.yml> functionality might be more suitable.  See L<CPAN::Reporter::Smoker>, L<CPAN>, and L<CPAN::Distroprefs> for more details.
 
 =head2 __installed_dists
 
@@ -214,11 +214,7 @@ Returns an array ref of dist names (e.g. 'ANDK/CPAN-1.9301.tar.gz' ).
 
 	CPAN::Reporter::Smoker::Safer->__installed_dists( $mask, $filter );
 
-C<mask> is optional, and is same value as L<"safer__mask">. C<filter> is optional, and is same value as L<"safer__filter">.
-
-=head2 myprint, myexit, mywarn, mydie
-
-These are included as a hack, so that C<$CPAN::Frontend> can be set to C<CPAN::Reporter::Smoker::Safer> so that the output of C<CPAN::Distribution::reports()> can be trapped and parsed.
+C<mask> is optional, and is same value as L<"mask">. C<filter> is optional, and is same value as L<"filter">.
 
 
 =head1 AUTHOR

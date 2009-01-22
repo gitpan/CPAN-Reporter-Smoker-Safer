@@ -4,20 +4,30 @@
 # (no particular order) #
 #########################
 
-* Get feedback on v0.01 from cpan-testers-discuss
+* feedback from cpan-testers-discuss
 
-* use accessor/mutator methods for the package vars
+* use accessor/mutator methods for the package vars...
+    not necessary?? can now be set from start(safer=>{})
+
+* POD notes:
+  + levels of test reporting
+  + in description, mention "trusted" definition of min reports/days old.
+
+* better coverage
 
 ##############
 COVERAGE STATS
 ##############
 
-*** v0.01 ***
+*** v0.02 ***
 ---------------------------- ------ ------ ------ ------ ------ ------ ------
 File                           stmt   bran   cond    sub    pod   time  total
 ---------------------------- ------ ------ ------ ------ ------ ------ ------
-.../Reporter/Smoker/Safer.pm   83.6   90.9   71.4   76.9  100.0  100.0   84.2	# 101/120
+.../Reporter/Smoker/Safer.pm   85.5   71.4   44.4   90.0  100.0  100.0   79.5	#  93/117
 ---------------------------- ------ ------ ------ ------ ------ ------ ------
+
+cover -test
+chmod go+rx cover_db
 
 export HARNESS_PERL_SWITCHES=-MDevel::Cover=+ignore,Errno.pm
 cover -delete

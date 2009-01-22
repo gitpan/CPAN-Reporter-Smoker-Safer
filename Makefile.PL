@@ -1,7 +1,7 @@
 use strict;
 use warnings;
 use 5.006;
-use ExtUtils::MakeMaker 6.48;
+use ExtUtils::MakeMaker;
 
 WriteMakefile(
     NAME                => 'CPAN::Reporter::Smoker::Safer',
@@ -15,9 +15,9 @@ WriteMakefile(
 	'CPAN::Reporter::Smoker' => 0,
 	'Test::More'             => 0,
 	'Test::Differences'      => 0,
-	'POSIX'                  => 0,
+        'URI'                    => 0,
+        'LWP::Simple'            => 0,
     },
-    MIN_PERL_VERSION    => '5.6.1',
     dist                => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean               => { FILES => 'CPAN-Reporter-Smoker-Safer-*' },
 );

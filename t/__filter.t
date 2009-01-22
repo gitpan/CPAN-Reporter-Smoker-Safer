@@ -2,7 +2,7 @@
 
 use strict;
 use warnings;
-use Test::More tests => 12;
+use Test::More tests => 11;
 use CPAN::Reporter::Smoker::Safer;
 use CPAN;  # CPAN::Distribution
 $|=1;
@@ -36,11 +36,9 @@ check_filter($dist,	0,	0,	99999,	() );
 check_filter($dist,	0,	99999,	99999,	() );
 
 check_filter($distDNE,	1,	0,	0,	() );
-check_filter($distDNE,	1,	1,	0,	() );
-check_filter($distDNE,	1,	0,	1,	() );
-check_filter($distDNE,	1,	1,	1,	() );
-
-is($CPAN::Reporter::Smoker::Safer::OUTPUT, '', "OUTPUT empty");
+check_filter($distDNE,	0,	1,	0,	() );
+check_filter($distDNE,	0,	0,	1,	() );
+check_filter($distDNE,	0,	1,	1,	() );
 
 exit;
 
