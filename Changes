@@ -1,5 +1,10 @@
 Revision history for CPAN-Reporter-Smoker-Safer
 
+0.03    2009-01-31
+        * added safer=>{preview=>1} option for debugging/testing.
+        * added t/start.t
+        * POD updates
+
 0.02    2009-01-22
         * Removed ExtUtils::MakeMaker 6.48 and perl 5.6.1 version restrictions.
         * Refactored __filter to use Barbie's new http://www.cpantesters.org/cgi-bin/reports-text.cgi api.

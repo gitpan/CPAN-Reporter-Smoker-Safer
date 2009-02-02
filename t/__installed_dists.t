@@ -7,8 +7,8 @@ use Test::Differences;
 use CPAN::Reporter::Smoker::Safer;
 $|=1;
 
-local $CPAN::Reporter::Smoker::Safer::MIN_REPORTS = 0;
-local $CPAN::Reporter::Smoker::Safer::MIN_DAYS_OLD    = 0;
+local $CPAN::Reporter::Smoker::Safer::MIN_REPORTS  = 0;
+local $CPAN::Reporter::Smoker::Safer::MIN_DAYS_OLD = 0;
 my ($dists, $mask, $label);
 
 

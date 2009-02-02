@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               CPAN-Reporter-Smoker-Safer
-version:            0.02
+version:            0.03
 abstract:           Turnkey smoking of installed distros
 author:
     - David Westbrook <dwestbrook@gmail.com>

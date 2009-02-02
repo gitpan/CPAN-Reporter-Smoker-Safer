@@ -6,12 +6,13 @@
 
 * feedback from cpan-testers-discuss
 
+===> Add to cpantesters wiki <===
+
 * use accessor/mutator methods for the package vars...
     not necessary?? can now be set from start(safer=>{})
 
 * POD notes:
   + levels of test reporting
-  + in description, mention "trusted" definition of min reports/days old.
 
 * better coverage
 
@@ -19,11 +20,11 @@
 COVERAGE STATS
 ##############
 
-*** v0.02 ***
+*** v0.03 ***
 ---------------------------- ------ ------ ------ ------ ------ ------ ------
 File                           stmt   bran   cond    sub    pod   time  total
 ---------------------------- ------ ------ ------ ------ ------ ------ ------
-.../Reporter/Smoker/Safer.pm   85.5   71.4   44.4   90.0  100.0  100.0   79.5	#  93/117
+.../Reporter/Smoker/Safer.pm   95.8   90.0   55.6  100.0  100.0  100.0   91.7	# 111/121
 ---------------------------- ------ ------ ------ ------ ------ ------ ------
 
 cover -test

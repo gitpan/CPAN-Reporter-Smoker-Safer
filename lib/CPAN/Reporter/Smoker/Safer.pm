@@ -11,7 +11,7 @@ use Exporter;
 our @ISA = 'Exporter';
 our @EXPORT = qw/ start /;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 our $MIN_REPORTS  = 10;
 our $MIN_DAYS_OLD = 14;
@@ -24,14 +24,18 @@ our @RE_EXCLUSIONS = (
 sub start {              # Overload of CPAN::Reporter::Smoker::start()
   my $self = __PACKAGE__;
   my $args = { @_ };
+
   my $saferOpts = delete( $args->{safer} ) || {};
   $MIN_REPORTS   =   $saferOpts->{min_reports}  if exists $saferOpts->{min_reports};
   $MIN_DAYS_OLD  =   $saferOpts->{min_days_old} if exists $saferOpts->{min_days_old};
   @RE_EXCLUSIONS = @{$saferOpts->{exclusions}}  if exists $saferOpts->{exclusions};
-  my $dists = $self->__installed_dists( @$saferOpts{qw/mask filter/} );
 
-  printf "Smoker::Safer: Found %d suitable distributions.\n", scalar @$dists;
-  return CPAN::Reporter::Smoker::start( %$args, list => $dists );
+  $args->{list} = $self->__installed_dists( @$saferOpts{qw/mask filter/} );
+
+  return $args if $saferOpts->{preview};  # Mostly for debugging & testing.
+
+  printf "Smoker::Safer: Found %d suitable distributions.\n", scalar @{ $args->{list} };
+  return CPAN::Reporter::Smoker::start( %$args );
 }
 
 sub __filter {
@@ -109,7 +113,7 @@ CPAN::Reporter::Smoker::Safer - Turnkey smoking of installed distros
 
 =head1 VERSION
 
-Version 0.02
+Version 0.03
 
 
 =head1 SYNOPSIS
@@ -124,13 +128,25 @@ Version 0.02
   perl -MCPAN::Reporter::Smoker::Safer -e 'start( safer=>{min_reports=>0, min_days_old=>0, mask=>"/MyFoo::/"} )'
 
   # Custom filter (in this case, specific authorid)
-  perl -MCPAN::Reporter::Smoker::Safer -e 'start( safer=>{filter=>sub{$_[1] =~ m#/DAVIDRW/#}} )'
+  perl -MCPAN::Reporter::Smoker::Safer -e 'start( safer=>{filter=>sub{$_[1]->pretty_id =~ m#/DAVIDRW/#}} )'
 
+  # Preview mode - display distros found
+  perl -MCPAN::Reporter::Smoker::Safer -MData::Dumper -e 'print Dumper start(safer=>{preview=>1})'
 
 =head1 DESCRIPTION
 
-This is a subclass of L<CPAN::Reporter::Smoker> that will limit the set of tested distributions to ones that are already installed on the system (and their dependencies).  This is based on the assumption that, having been installed, the distributions and their dependencies are trusted. This can be used to run partial smoke testing on a box that normally wouldn't be desired for full smoke testing (i.e. isn't a dedicated/isolated environment). Another potential use is to vet everything before upgrading.
+This is a subclass of L<CPAN::Reporter::Smoker> that will limit the set of tested distributions to ones that are "trusted".
+This means that the distribution is already installed on the system, and that the new version it has been on CPAN for a certain amount of time, and has already received a certain number of test reporters.
+The assumption is that is it is safe (as in "safer") to install distributions (and their dependencies) that meet that criteria.
 
+This can be used to run partial smoke testing on a box that normally wouldn't be desired for full smoke testing
+(i.e. isn't a dedicated/isolated environment).
+Another potential use is to vet everything before upgrading.
+
+=head1 GETTING STARTED
+
+Start with installing and configuring  L<CPAN::Reporter> -- after that you should be all set.
+There are also some very good hints and notes in the L<CPAN::Reporter::Smoker> documentation.
 
 =head2 WARNING -- smoke testing is risky
 
@@ -182,6 +198,10 @@ Defaults to C<[ qr#/perl-5\.#, qr#/mod_perl-\d# ]>.  This is used by the default
 any distro whose name (e.g. A/AU/AUTHOR/Foo-Bar-1.23.tar.gz) matches one of these regexes.
 
 Note that the F<disabled.yml> functionality might be more suitable.  See L<CPAN::Reporter::Smoker>, L<CPAN>, and L<CPAN::Distroprefs> for more details.
+
+=item preview
+
+Default false.  If true, instead of invoking C<CPAN::Reporter::Smoker::start()> will just return the args (as hashref) that would have been passsed to C<start()>.  This is usefull for debugging/testing without kicking off the actual smoke tester.
 
 =back
 

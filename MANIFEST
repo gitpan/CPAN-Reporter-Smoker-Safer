@@ -10,4 +10,5 @@ t/pod.t
 t/boilerplate.t
 t/__filter.t
 t/__installed_dists.t
+t/start.t
 META.yml                                 Module meta-data (added by MakeMaker)
