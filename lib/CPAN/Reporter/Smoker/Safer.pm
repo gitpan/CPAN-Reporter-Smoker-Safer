@@ -6,20 +6,26 @@ use base qw(CPAN::Reporter::Smoker);
 use CPAN;
 use LWP::Simple();
 use URI();
+use File::Temp();
+use Date::Calc();
+use CPAN::DistnameInfo();
+use CPAN::Reporter::History();
 
 use Exporter;
 our @ISA = 'Exporter';
 our @EXPORT = qw/ start /;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
-our $MIN_REPORTS  = 10;
+our $MIN_REPORTS  = 0;
 our $MIN_DAYS_OLD = 14;
 our @RE_EXCLUSIONS = (
   qr#/perl-5\.#,
   qr#/mod_perl-\d#,
 );
+our $EXCLUDE_TESTED = 1;
 
+my %SEEN = map { $_->{dist} => 1 } CPAN::Reporter::History::have_tested();
 
 sub start {              # Overload of CPAN::Reporter::Smoker::start()
   my $self = __PACKAGE__;
@@ -29,6 +35,7 @@ sub start {              # Overload of CPAN::Reporter::Smoker::start()
   $MIN_REPORTS   =   $saferOpts->{min_reports}  if exists $saferOpts->{min_reports};
   $MIN_DAYS_OLD  =   $saferOpts->{min_days_old} if exists $saferOpts->{min_days_old};
   @RE_EXCLUSIONS = @{$saferOpts->{exclusions}}  if exists $saferOpts->{exclusions};
+  $EXCLUDE_TESTED=   $saferOpts->{exclude_tested} if exists $saferOpts->{exclude_tested};
 
   $args->{list} = $self->__installed_dists( @$saferOpts{qw/mask filter/} );
 
@@ -43,32 +50,49 @@ sub __filter {
   my $dist = shift;
   my $d = $dist->pretty_id;
   foreach my $re ( @RE_EXCLUSIONS ){
-    return 0 if $d =~ m/$re/;
+    next unless $d =~ m/$re/;
+    printf "Smoker::Safer: '%s' matches exclusion regex.\n", $d;
+    return 0;
   }
 
-  my $uri = URI->new('http://www.cpantesters.org/cgi-bin/reports-text.cgi');
-  my %params = (
-	distvers => $dist->base_id,
-	agent => ref($self)||$self,
-  );
+  if( $EXCLUDE_TESTED && exists $SEEN{ $dist->base_id } ){
+    printf "Smoker::Safer: '%s' already tested.\n", $d;
+    return 0;
+  }
 
   if( $MIN_DAYS_OLD ){
-    $uri->query_form( %params, act => 'uploaded', epoch => 1 );
-    if( my $t = LWP::Simple::get($uri) ){
-      return 0 if time - $t < $MIN_DAYS_OLD*24*60*60;
+    no warnings 'uninitialized';
+    my @date = split /-/, $dist->upload_date;  # expecting yyyy-mm-dd
+    if( scalar(@date) == 3 ){
+      my $days_old = Date::Calc::Delta_Days( @date[0,1,2], Date::Calc::Today() );
+      return 0 if $days_old < $MIN_DAYS_OLD;
     }else{
-      printf "Smoker::Safer: WARNING -- no upload_date for '%s'\n", $d;
+      printf "Smoker::Safer: WARNING -- '%s' has invalid upload_date '%s'\n", $d, $dist->upload_date;
       return 0;
     }
   }
 
   if( $MIN_REPORTS ){
-    $uri->query_form( %params, act => 'reports' );
-    my ($n) = LWP::Simple::get($uri) =~ /ALL\((\d+)\)/;
+    my $info = CPAN::DistnameInfo->new($dist->id);
+    my $n = eval {
+      # see source of CPAN::Distribution->reports() for reference.
+      my $url = sprintf "http://www.cpantesters.org/show/%s.yaml", $info->dist;
+      my $f = File::Temp->new( template => 'cpan_reports_XXXX', suffix => '.yaml', unlink => 1 );
+      our $ua;
+      import LWP::Simple qw($ua);
+      $ua->timeout(10);
+      $ua->agent("CPAN::Reporter::Smoker::Safer/$VERSION");
+      LWP::Simple::getstore($url, "$f");
+      my $unserialized = CPAN->_yaml_loadfile("$f")->[0];
+      my @reports = grep { $_->{version} eq $info->version } @$unserialized;
+      scalar(@reports);
+    };
+
     if( !defined $n ){
       printf "Smoker::Safer: WARNING -- couldn't retrieve reports for '%s'\n", $d;
       return 0;
     }elsif( $n < $MIN_REPORTS ){
+      printf "Smoker::Safer: WARNING -- '%s' has %s reports (min=%s)\n", $d, $n, $MIN_REPORTS;
       return 0;
     }
   }
@@ -113,7 +137,7 @@ CPAN::Reporter::Smoker::Safer - Turnkey smoking of installed distros
 
 =head1 VERSION
 
-Version 0.03
+Version 0.04
 
 
 =head1 SYNOPSIS
@@ -128,7 +152,7 @@ Version 0.03
   perl -MCPAN::Reporter::Smoker::Safer -e 'start( safer=>{min_reports=>0, min_days_old=>0, mask=>"/MyFoo::/"} )'
 
   # Custom filter (in this case, specific authorid)
-  perl -MCPAN::Reporter::Smoker::Safer -e 'start( safer=>{filter=>sub{$_[1]->pretty_id =~ m#/DAVIDRW/#}} )'
+  perl -MCPAN::Reporter::Smoker::Safer -e 'start( safer=>{filter=>sub{$_[1]->pretty_id =~ m#^DAVIDRW/#}} )'
 
   # Preview mode - display distros found
   perl -MCPAN::Reporter::Smoker::Safer -MData::Dumper -e 'print Dumper start(safer=>{preview=>1})'
@@ -145,7 +169,8 @@ Another potential use is to vet everything before upgrading.
 
 =head1 GETTING STARTED
 
-Start with installing and configuring  L<CPAN::Reporter> -- after that you should be all set.
+See the CPAN Testers Quick Start guide L<http://wiki.cpantesters.org/wiki/QuickStart>.  Once L<CPAN::Reporter> is installed and configured, you should be all set.
+
 There are also some very good hints and notes in the L<CPAN::Reporter::Smoker> documentation.
 
 =head2 WARNING -- smoke testing is risky
@@ -186,11 +211,11 @@ Code ref; Defaults to L<"__filter">. First argument is the CPAN::Reporter::Smoke
 
 =item min_reports
 
-Defaults to 10. This is used by the default filter -- distros are 'trusted' if they have at least this many CPAN testers reports already.
+Defaults to 0 (since this involves extra http fetches). This is used by the default filter -- distros are 'trusted' if they have at least this many CPAN testers reports already.
 
 =item min_days_old
 
-Defaults to 10. This is used by the default filter -- distros are 'trusted' unless they were uploaded to CPAN at least this many days ago.
+Defaults to 14. This is used by the default filter -- distros are 'trusted' if they were uploaded to CPAN at least this many days ago.
 
 =item exclusions
 
@@ -202,6 +227,10 @@ Note that the F<disabled.yml> functionality might be more suitable.  See L<CPAN:
 =item preview
 
 Default false.  If true, instead of invoking C<CPAN::Reporter::Smoker::start()> will just return the args (as hashref) that would have been passsed to C<start()>.  This is usefull for debugging/testing without kicking off the actual smoke tester.
+
+=item exclude_tested
+
+Default true. This is used by the default filter -- if true, distros are skipped if they were previously tested.  L<CPAN::Reporter::Smoker> does this anyways, so doing up front is more efficient. (Use in test suite is the only reason this is provided as a config option.)
 
 =back
 
@@ -216,6 +245,10 @@ Used as the default L<"filter"> code ref.
 =item *
 
 Excludes any distro who's name (e.g. A/AU/AUTHOR/Foo-Bar-1.23.tar.gz) matches a list of L<"exclusions">.
+
+=item *
+
+If L<"exclude_tested"> is true, excludes any distro that was already tested, as determined by L<CPAN::Reporter::History>. 
 
 =item *
 

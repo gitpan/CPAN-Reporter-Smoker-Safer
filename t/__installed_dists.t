@@ -9,6 +9,7 @@ $|=1;
 
 local $CPAN::Reporter::Smoker::Safer::MIN_REPORTS  = 0;
 local $CPAN::Reporter::Smoker::Safer::MIN_DAYS_OLD = 0;
+local $CPAN::Reporter::Smoker::Safer::EXCLUDE_TESTED = 0;
 my ($dists, $mask, $label);
 
 

@@ -49,6 +49,7 @@ sub check_filter {
   local $CPAN::Reporter::Smoker::Safer::MIN_DAYS_OLD  = $min_days_old;
   local $CPAN::Reporter::Smoker::Safer::MIN_REPORTS   = $min_reports;
   local @CPAN::Reporter::Smoker::Safer::RE_EXCLUSIONS = @exclusions;
+  local $CPAN::Reporter::Smoker::Safer::EXCLUDE_TESTED = 0;
   my $s = sprintf "[%s] %s reps>=%d,days>=%d,REs=%d", $dist->pretty_id, ($expected?'+':'-'), $min_reports, $min_days_old, scalar(@exclusions);
   is( CPAN::Reporter::Smoker::Safer->__filter( $dist ), $expected, $s );
 }
